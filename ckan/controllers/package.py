@@ -1077,7 +1077,7 @@ class PackageController(base.BaseController):
             if request.method == 'POST':
                 get_action('package_delete')(context, {'id': id})
                 h.flash_notice(_('Dataset has been deleted.'))
-                h.redirect_to(controller='package', action='search')
+                h.redirect_to(controller='user', action='read')
             c.pkg_dict = get_action('package_show')(context, {'id': id})
         except NotAuthorized:
             abort(401, _('Unauthorized to delete package %s') % '')
