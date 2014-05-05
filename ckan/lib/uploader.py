@@ -136,7 +136,7 @@ class Upload(object):
                     os.remove(self.tmp_filepath)
                     err = 'File upload too large, maximum file size is {0} MB'
                     raise logic.ValidationError(
-                        {'upload': [err.format(max_size)]}
+                        {self.file_field: [err.format(max_size)]}
                     )
             output_file.close()
             os.rename(self.tmp_filepath, self.filepath)
