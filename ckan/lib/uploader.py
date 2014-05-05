@@ -134,8 +134,9 @@ class Upload(object):
                 output_file.write(data)
                 if current_size > max_size:
                     os.remove(self.tmp_filepath)
+                    err = 'File upload too large, maximum file size is {0} MB'
                     raise logic.ValidationError(
-                        {self.file_field: ['File upload too large']}
+                        {'upload': [err.format(max_size)]}
                     )
             output_file.close()
             os.rename(self.tmp_filepath, self.filepath)
@@ -221,8 +222,9 @@ class ResourceUpload(object):
                 output_file.write(data)
                 if current_size > max_size:
                     os.remove(tmp_filepath)
+                    err = 'File upload too large, maximum file size is {0} MB'
                     raise logic.ValidationError(
-                        {'upload': ['File upload too large']}
+                        {'upload': [err.format(max_size)]}
                     )
             output_file.close()
             os.rename(tmp_filepath, filepath)
