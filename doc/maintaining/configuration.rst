@@ -1,15 +1,67 @@
-===================
-Config File Options
-===================
+=====================
+Configuration Options
+=====================
 
-You can set many important options in the CKAN config file. By default, the
-configuration file is located at ``/etc/ckan/development.ini`` or
-``/etc/ckan/production.ini``. This section documents all of the config file
+The functionality and features of CKAN can be modified using many different
+configuration options. These are generally set in the `CKAN configuration file`_,
+but some of them can also be set via `Environment variables`_ or at :ref:`runtime <runtime-config>`.
+
+
+
+Environment variables
+*********************
+
+Some of the CKAN configuration options can be defined as `Environment variables <env-vars-wikipedia>`_
+on the server operating system.
+
+These are generally low-level critical settings needed when setting up the application, like the database
+connection, the Solr server URL, etc. Sometimes it can be useful to define them as environment variables to
+automate and orchestrate deployments without having to first modify the `configuration file <CKAN configuration file>`_.
+
+These options are only read at startup time to update the ``config`` object used by CKAN,
+but they won't we accessed any more during the lifetime of the application.
+
+CKAN environment variables names match the options in the configuration file, but they are always uppercase
+and prefixed with `CKAN_` (this prefix is added even if
+the corresponding option in the ini file does not have it), and replacing dots with underscores.
+
+This is the list of currently supported environment variables, please refer to the entries in the
+`configuration file <CKAN configuration file>`_ section below for more details about each one:
+
+.. literalinclude:: /../ckan/config/environment.py
+    :language: python
+    :start-after: Start CONFIG_FROM_ENV_VARS
+    :end-before: End CONFIG_FROM_ENV_VARS
+
+.. _env-vars-wikipedia: http://en.wikipedia.org/wiki/Environment_variable
+
+
+.. _runtime-config:
+
+Updating configuration options during runtime
+*********************************************
+
+CKAN configuration options are generally defined before starting the web application (either in the
+`configuration file <CKAN configuration file>`_ or via `Environment variables`_).
+
+A limited number of configuration options can also be edited during runtime. This can be done on the
+:ref:`administration interface <admin page>` or using the :py:func:`~ckan.logic.action.update.config_option_update`
+API action. Only :doc:`sysadmins </sysadmin-guide>` can edit these runtime-editable configuration options. Changes made to these configuration options will be stored on the database and persisted when the server is restarted.
+
+Extensions can add (or remove) configuration options to the ones that can be edited at runtime. For more
+details on how to this check :doc:`/extensions/remote-config-update`.
+
+
+
+.. _config_file:
+
+CKAN configuration file
+***********************
+
+By default, the
+configuration file is located at ``/etc/ckan/default/development.ini`` or
+``/etc/ckan/default/production.ini``. This section documents all of the config file
 settings, for reference.
-
-.. todo::
-
-   Insert cross-ref to section about location of config file?
 
 .. note:: After editing your config file, you need to restart your webserver
    for the changes to take effect.
@@ -36,7 +88,6 @@ settings, for reference.
 
    If the same option is set more than once in your config file, the last
    setting given in the file will override the others.
-
 
 General Settings
 ----------------
@@ -96,6 +147,7 @@ who.secure
 ^^^^^^^^^^
 
 Example::
+
  who.secure = True
 
 Default value: False
@@ -153,6 +205,23 @@ with read permissions only. The format is the same as in :ref:`sqlalchemy.url`.
 
 .. end_config-datastore-urls
 
+.. _ckan.datastore.sqlalchemy:
+
+ckan.datastore.sqlalchemy.*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+ ckan.datastore.sqlalchemy.pool_size=10
+ ckan.datastore.sqlalchemy.max_overflow=20
+
+Custom sqlalchemy config parameters used to establish the DataStore
+database connection.
+
+To get the list of all the available properties check the `SQLAlchemy documentation`_
+
+.. _SQLAlchemy documentation: http://docs.sqlalchemy.org/en/rel_0_9/core/engines.html#engine-creation-api
+
 .. _ckan.datastore.default_fts_lang:
 
 ckan.datastore.default_fts_lang
@@ -199,10 +268,12 @@ Example::
 
   ckan.site_url = http://scotdata.ckan.net
 
-Default value:  (none)
+Default value:  (an explicit value is mandatory)
 
 The URL of your CKAN site. Many CKAN features that need an absolute URL to your
 site use this setting.
+
+.. important:: It is mandatory to complete this setting
 
 .. warning::
 
@@ -263,6 +334,19 @@ Example::
 Default value: ``None``
 
 Controls if we're caching CKAN's static files, if it's serving them.
+
+.. _ckan.use_pylons_response_cleanup_middleware:
+
+ckan.use_pylons_response_cleanup_middleware
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+  ckan.use_pylons_response_cleanup_middleware = true
+
+Default value: true
+
+This enables middleware that clears the response string after it has been sent. This helps CKAN's memory management if CKAN repeatedly serves very large requests.
 
 .. _ckan.static_max_age:
 
@@ -682,6 +766,23 @@ Default value:  ``True``
 This controls if we'll use the 1 day cache for stats.
 
 
+.. _ckan.resource_proxy.max_file_size:
+
+ckan.resource_proxy.max_file_size
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+    ckan.resource_proxy.max_file_size = 1 * 1024 * 1024
+
+Default value:  ``1 * 1024 * 1024`` (1 MB)
+
+This sets the upper file size limit for in-line previews.
+Increasing the value allows CKAN to preview larger files (e.g. PDFs) in-line;
+however, a higher value might cause time-outs, or unresponsive browsers for CKAN users
+with lower bandwidth. If left commented out, CKAN will default to 1 MB.
+
+
 Front-End Settings
 ------------------
 
@@ -863,34 +964,6 @@ When set to false, or no, this setting will hide the 'Apps, Ideas, etc' tab on t
 
 .. note::  This only applies to the legacy Genshi-based templates
 
-.. _ckan.preview.direct:
-
-ckan.preview.direct
-^^^^^^^^^^^^^^^^^^^
-
-Example::
-
- ckan.preview.direct = png jpg jpeg gif
-
-Default value: ``png jpg jpeg gif``
-
-Defines the resource formats which should be embedded directly in an ``img`` tag
-when previewing them.
-
-.. _ckan.preview.loadable:
-
-ckan.preview.loadable
-^^^^^^^^^^^^^^^^^^^^^
-
-Example::
-
- ckan.preview.loadable = html htm rdf+xml owl+xml xml n3 n-triples turtle plain atom rss txt
-
-Default value: ``html htm rdf+xml owl+xml xml n3 n-triples turtle plain atom rss txt``
-
-Defines the resource formats which should be loaded directly in an ``iframe``
-tag when previewing them if no :doc:`data-viewer` can preview it.
-
 .. _ckan.dumps_url:
 
 ckan.dumps_url
@@ -914,6 +987,19 @@ then specify the format here, so that it can be advertised in the
 web interface. ``dumps_format`` is just a string for display. Example::
 
   ckan.dumps_format = CSV/JSON
+
+.. _ckan.recaptcha.version:
+
+ckan.recaptcha.version
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The version of Recaptcha to use, for example::
+
+ ckan.recaptcha.version = 1
+
+Default Value: 1
+
+Valid options: 1, 2
 
 .. _ckan.recaptcha.publickey:
 
@@ -1000,6 +1086,78 @@ receiving the request being is shown in the header.
 .. note:: This info only shows if debug is set to True.
 
 .. end_config-front-end
+
+Resource Views Settings
+-----------------------
+
+.. start_resource-views
+
+.. _ckan.views.default_views:
+
+ckan.views.default_views
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+
+ ckan.views.default_views = image_view webpage_view recline_grid_view
+
+Default value: ``image_view recline_view``
+
+Defines the resource views that should be created by default when creating or
+updating a dataset. From this list only the views that are relevant to a particular
+resource format will be created. This is determined by each individual view.
+
+If not present (or commented), the default value is used. If left empty, no
+default views are created.
+
+.. note:: You must have the relevant view plugins loaded on the ``ckan.plugins``
+    setting to be able to create the default views, eg::
+
+        ckan.plugins = image_view webpage_view recline_grid_view ...
+
+        ckan.views.default_views = image_view webpage_view recline_grid_view
+
+.. _ckan.preview.json_formats:
+
+ckan.preview.json_formats
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+ ckan.preview.json_formats = json
+
+Default value: ``json``
+
+JSON based resource formats that will be rendered by the Text view plugin (``text_view``)
+
+.. _ckan.preview.xml_formats:
+
+ckan.preview.xml_formats
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+ ckan.preview.xml_formats = xml rdf rss
+
+Default value: ``xml rdf rdf+xml owl+xml atom rss``
+
+XML based resource formats that will be rendered by the Text view plugin (``text_view``)
+
+.. _ckan.preview.text_formats:
+
+ckan.preview.text_formats
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Example::
+
+ ckan.preview.text_formats = text plain
+
+Default value: ``text plain text/plain``
+
+Plain text based resource formats that will be rendered by the Text view plugin (``text_view``)
+
+.. end_resource-views
 
 Theming Settings
 ----------------

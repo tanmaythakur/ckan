@@ -2,6 +2,7 @@
 
 import logging
 import datetime
+import time
 import json
 
 from pylons import config
@@ -20,6 +21,8 @@ import ckan.lib.email_notifications as email_notifications
 import ckan.lib.search as search
 import ckan.lib.uploader as uploader
 import ckan.lib.datapreview
+import ckan.lib.app_globals as app_globals
+
 
 from ckan.common import _, request
 
@@ -152,7 +155,7 @@ def resource_update(context, data_dict):
     try:
         context['defer_commit'] = True
         context['use_cache'] = False
-        pkg_dict = _get_action('package_update')(context, pkg_dict)
+        updated_pkg_dict = _get_action('package_update')(context, pkg_dict)
         context.pop('defer_commit')
     except ValidationError, e:
         errors = e.error_dict['resources'][n]
@@ -349,10 +352,23 @@ def package_update(context, data_dict):
                                             {'id': pkg.id,
                                              'organization_id': pkg.owner_org})
 
+    # Needed to let extensions know the new resources ids
+    model.Session.flush()
+    if data.get('resources'):
+        for index, resource in enumerate(data['resources']):
+            resource['id'] = pkg.resources[index].id
+
     for item in plugins.PluginImplementations(plugins.IPackageController):
         item.edit(pkg)
 
         item.after_update(context, data)
+
+    # Create default views for resources if necessary
+    if data.get('resources'):
+        logic.get_action('package_create_default_resource_views')(
+            {'model': context['model'], 'user': context['user'],
+             'ignore_auth': True},
+            {'package': data})
 
     if not context.get('defer_commit'):
         model.repo.commit()
@@ -618,6 +634,9 @@ def group_update(context, data_dict):
     :rtype: dictionary
 
     '''
+    # Callers that set context['allow_partial_update'] = True can choose to not
+    # specify particular keys and they will be left at their existing
+    # values. This includes: packages, users, groups, tags, extras
     return _group_or_org_update(context, data_dict)
 
 def organization_update(context, data_dict):
@@ -638,6 +657,9 @@ def organization_update(context, data_dict):
     :rtype: dictionary
 
     '''
+    # Callers that set context['allow_partial_update'] = True can choose to not
+    # specify particular keys and they will be left at their existing
+    # values. This includes: users, groups, tags, extras
     return _group_or_org_update(context, data_dict, is_org=True)
 
 def user_update(context, data_dict):
@@ -1291,3 +1313,93 @@ def bulk_update_delete(context, data_dict):
 
     _check_access('bulk_update_delete', context, data_dict)
     _bulk_update_dataset(context, data_dict, {'state': 'deleted'})
+
+
+def config_option_update(context, data_dict):
+    '''
+
+    .. versionadded:: 2.4
+
+    Allows to modify some CKAN runtime-editable config options
+
+    It takes arbitrary key, value pairs and checks the keys against the
+    config options update schema. If some of the provided keys are not present
+    in the schema a :py:class:`~ckan.plugins.logic.ValidationError` is raised.
+    The values are then validated against the schema, and if validation is
+    passed, for each key, value config option:
+
+    * It is stored on the ``system_info`` database table
+    * The Pylons ``config`` object is updated.
+    * The ``app_globals`` (``g``) object is updated (this only happens for
+      options explicitly defined in the ``app_globals`` module.
+
+    The following lists a ``key`` parameter, but this should be replaced by
+    whichever config options want to be updated, eg::
+
+        get_action('config_option_update)({}, {
+            'ckan.site_title': 'My Open Data site',
+            'ckan.homepage_layout': 2,
+        })
+
+    :param key: a configuration option key (eg ``ckan.site_title``). It must
+        be present on the ``update_configuration_schema``
+    :type key: string
+
+    :returns: a dictionary with the options set
+    :rtype: dictionary
+
+    .. note:: You can see all available runtime-editable configuration options
+        calling
+        the :py:func:`~ckan.logic.action.get.config_option_list` action
+
+    .. note:: Extensions can modify which configuration options are
+        runtime-editable.
+        For details, check :doc:`/extensions/remote-config-update`.
+
+    .. warning:: You should only add config options that you are comfortable
+        they can be edited during runtime, such as ones you've added in your
+        own extension, or have reviewed the use of in core CKAN.
+
+    '''
+    model = context['model']
+
+    _check_access('config_option_update', context, data_dict)
+
+    schema = schema_.update_configuration_schema()
+
+    available_options = schema.keys()
+
+    provided_options = data_dict.keys()
+
+    unsupported_options = set(provided_options) - set(available_options)
+    if unsupported_options:
+        msg = 'Configuration option(s) \'{0}\' can not be updated'.format(
+              ' '.join(list(unsupported_options)))
+
+        raise ValidationError(msg, error_summary={'message': msg})
+
+    data, errors = _validate(data_dict, schema, context)
+    if errors:
+        model.Session.rollback()
+        raise ValidationError(errors)
+
+    for key, value in data.iteritems():
+
+        # Save value in database
+        model.set_system_info(key, value)
+
+        # Update the pylons `config` object
+        config[key] = value
+
+        # Only add it to the app_globals (`g`) object if explicitly defined
+        # there
+        globals_keys = app_globals.app_globals_from_config_details.keys()
+        if key in globals_keys:
+            app_globals.set_app_global(key, value)
+
+    # Update the config update timestamp
+    model.set_system_info('ckan.config_update', str(time.time()))
+
+    log.info('Updated config options: {0}'.format(data))
+
+    return data
